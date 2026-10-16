@@ -24,6 +24,66 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from data_saver import GLOBAL_TRAFFIC_METER
 
+
+def check_graphical_display() -> dict[str, Any]:
+    """校验当前服务进程能否连接到实际 X11/Wayland 显示服务。
+
+    注册浏览器以 headed 模式运行；仅检查环境变量不够，因此同时尝试连接显示套接字。
+    不会启动浏览器、代理或产生外网请求。
+    """
+    display = os.environ.get("DISPLAY", "").strip()
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "").strip()
+
+    def can_connect_unix(path: str) -> bool:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.5)
+                sock.connect(path)
+            return True
+        except (OSError, ValueError):
+            return False
+
+    if display:
+        normalized = display
+        if normalized.startswith("unix/"):
+            normalized = normalized[5:]
+        match = re.match(r"^(?:(?P<host>[^:]+))?:(?P<number>\d+)(?:\.\d+)?$", normalized)
+        if match:
+            host = (match.group("host") or "").lower()
+            number = int(match.group("number"))
+            if not host or host in ("unix", "localhost", "127.0.0.1"):
+                candidates = [f"/tmp/.X11-unix/X{number}", f"/run/X11/X{number}"]
+                if any(can_connect_unix(path) for path in candidates):
+                    return {"available": True, "backend": "X11", "display": display, "message": "检测到可连接的 X11 显示服务。"}
+                # Linux X11 也可能只暴露 abstract namespace socket。
+                try:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                        sock.settimeout(0.5)
+                        sock.connect(f"\0/tmp/.X11-unix/X{number}")
+                    return {"available": True, "backend": "X11", "display": display, "message": "检测到可连接的 X11 显示服务。"}
+                except OSError:
+                    pass
+            elif host and host != "":
+                try:
+                    with socket.create_connection((host, 6000 + number), timeout=0.5):
+                        return {"available": True, "backend": "X11", "display": display, "message": "检测到可连接的远程 X11 显示服务。"}
+                except OSError:
+                    pass
+
+    if wayland_display:
+        runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+        wayland_path = wayland_display if os.path.isabs(wayland_display) else os.path.join(runtime_dir, wayland_display)
+        if runtime_dir and can_connect_unix(wayland_path):
+            return {"available": True, "backend": "Wayland", "display": wayland_display, "message": "检测到可连接的 Wayland 显示服务。"}
+
+    return {
+        "available": False,
+        "backend": "none",
+        "display": display or wayland_display,
+        "message": "当前服务进程无法连接图形显示服务（X11/Wayland）。任务已阻止，未启动住宅代理。请在有可用桌面显示会话的环境中启动面板，再重试。",
+    }
+
+
 # 将当前目录加入模块查找路径
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
@@ -422,6 +482,16 @@ def fetch_mailbox_messages_for_account(email: str, max_fetch: int = 15) -> dict[
 # ============================================================
 
 def _run_registration_worker(cfg: dict[str, Any]):
+    # 第二道保险：线程入口再次预检，必须早于代理桥初始化/取节点。
+    display_check = check_graphical_display()
+    if not display_check["available"]:
+        TASK_MGR.add_log("error", f"🛑 注册任务未启动：{display_check['message']}")
+        with TASK_MGR.lock:
+            TASK_MGR.is_running = False
+            TASK_MGR.stop_requested = False
+        TASK_MGR.broadcast_state()
+        return
+
     from novproxy_bridge import (
         NovProxyBridge,
         cleanup_leftover_browsers,
@@ -717,6 +787,20 @@ class PanelHTTPHandler(BaseHTTPRequestHandler):
             body = {}
 
         if path == "/api/start":
+            # 前置检查必须发生在状态变更、工作线程和住宅代理初始化之前。
+            display_check = check_graphical_display()
+            if not display_check["available"]:
+                message = display_check["message"]
+                TASK_MGR.add_log("error", f"🛑 拒绝启动注册任务：{message}")
+                TASK_MGR.broadcast_state()
+                self._send_json({
+                    "ok": False,
+                    "error": message,
+                    "code": "DISPLAY_UNAVAILABLE",
+                    "display_check": display_check,
+                }, 409)
+                return
+
             with TASK_MGR.lock:
                 if TASK_MGR.is_running:
                     self._send_json({"ok": False, "error": "当前已有任务正在运行中，请勿重复启动"})

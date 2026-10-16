@@ -3,3 +3,4 @@ __pycache__/
 config.local.json
 Results/*.txt
 !Results/recovery_pool.example.txt
+panel_stdout.log
