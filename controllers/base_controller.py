@@ -370,16 +370,29 @@ class BaseBrowserController(ABC):
                 except Exception:
                     self.smooth_click(page, finish_btn.first)
 
-            # 如果跳转后出现“保持登录状态？”等二次确认提示（KMSI）或隐私确认，自动点击通过
-            for _ in range(25):
+            # 如果跳转后出现“保持登录状态？”等二次确认提示（KMSI）或微软账户隐私政策须知（Privacy Notice），自动点击通过
+            for _ in range(35):
                 page.wait_for_timeout(1000)
-                if page.locator('[aria-label="新邮件"]').count() > 0 or "outlook.live.com/mail" in page.url:
+                curr_url = page.url or ""
+                if "privacynotice" in curr_url or "notice" in curr_url:
+                    notice_btn = page.locator('button:has-text("OK"), button:has-text("确定"), #idBtn_Accept, [data-testid="primaryButton"]')
+                    if notice_btn.count() > 0 and notice_btn.first.is_visible():
+                        try:
+                            self.smooth_click(page, notice_btn.first)
+                            page.wait_for_timeout(1500)
+                            continue
+                        except Exception:
+                            pass
+
+                if page.locator('[aria-label="新邮件"], [aria-label="New mail"]').count() > 0 or "outlook.live.com/mail" in curr_url:
                     break
-                for btn_txt in ("是", "继续", "确定", "下一步", "跳过", "接受"):
-                    b_loc = page.locator(f'button:has-text("{btn_txt}"), input[value="{btn_txt}"], [data-testid="primaryButton"]')
+
+                for btn_txt in ("是", "继续", "确定", "下一步", "跳过", "接受", "OK", "Got it", "Accept", "Next", "Yes", "Continue", "Skip"):
+                    b_loc = page.locator(f'button:has-text("{btn_txt}"), input[value="{btn_txt}"], [data-testid="primaryButton"], #idSIButton9')
                     if b_loc.count() > 0 and b_loc.first.is_visible():
                         try:
                             self.smooth_click(page, b_loc.first)
+                            page.wait_for_timeout(1000)
                             break
                         except Exception:
                             pass
@@ -407,16 +420,37 @@ class BaseBrowserController(ABC):
             return True
 
         try:
-            try:
-                page.locator('[aria-label="新邮件"], [aria-label="New mail"]').first.wait_for(timeout=32000)
-                return True
-            except Exception:
+            # 确保浏览器完全进入 Outlook 网页版并完成底层 Mailbox Store 初始化挂载 (Provisioning)
+            for loop_idx in range(3):
+                curr_u = page.url or ""
+                if "privacynotice" in curr_u or "notice" in curr_u:
+                    notice_btn = page.locator('button:has-text("OK"), button:has-text("确定"), #idBtn_Accept, [data-testid="primaryButton"]')
+                    if notice_btn.count() > 0 and notice_btn.first.is_visible():
+                        self.smooth_click(page, notice_btn.first)
+                        page.wait_for_timeout(2000)
+
+                for btn_txt in ("是", "继续", "确定", "下一步", "跳过", "接受", "OK", "Got it", "Accept", "Next", "Yes"):
+                    b_loc = page.locator(f'button:has-text("{btn_txt}"), input[value="{btn_txt}"], [data-testid="primaryButton"], #idSIButton9')
+                    if b_loc.count() > 0 and b_loc.first.is_visible():
+                        try:
+                            self.smooth_click(page, b_loc.first)
+                            page.wait_for_timeout(1000)
+                            break
+                        except Exception:
+                            pass
+
                 if "outlook.live.com" not in page.url:
                     page.goto("https://outlook.live.com/mail/0/", timeout=25000, wait_until="domcontentloaded")
-                else:
-                    page.reload(timeout=15000)
-                page.locator('[aria-label="新邮件"], [aria-label="New mail"]').first.wait_for(timeout=25000)
-                return True
+
+                try:
+                    page.locator('[aria-label="新邮件"], [aria-label="New mail"], [data-folder-name="inbox"], [title*="收件箱"], [title*="Inbox"]').first.wait_for(timeout=15000)
+                    print(f"[Success: Mailbox Store Ready] - 邮箱已完成首次 Web 初始化挂载: {email}{self.email_suffix}")
+                    page.wait_for_timeout(4000)  # 给予后台 Exchange 数据分区 4 秒绑定缓冲
+                    return True
+                except Exception:
+                    page.wait_for_timeout(2000)
+
+            return True
         except Exception:
             print('[Warn: Mailbox UI Slow] - 邮箱前端加载较慢，继续尝试提取 OAuth2 Token...')
             return True

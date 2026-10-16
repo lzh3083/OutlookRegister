@@ -1,6 +1,7 @@
 import random
 from patchright.sync_api import sync_playwright
 from .base_controller import BaseBrowserController
+from data_saver import setup_data_saver_for_page
 
 
 class PatchrightController(BaseBrowserController):
@@ -26,6 +27,11 @@ class PatchrightController(BaseBrowserController):
                     "--window-size=1280,800",
                     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
                     "--enforce-webrtc-ip-permission-check",
+                    "--disable-component-update",
+                    "--disable-background-networking",
+                    "--disable-default-apps",
+                    "--disable-sync",
+                    "--disable-speech-api",
                 ],
                 proxy=proxy_settings,
             )
@@ -157,6 +163,10 @@ class PatchrightController(BaseBrowserController):
         page.msft_count = 0
         page.risk_tier = None
         page.captcha_passed_token = False
+
+        # 注入极速省流量拦截器 (拦截字体、音视频、无用遥测与 OWA 附庸插件，白名单放行验证码)
+        enable_saver = getattr(self, "enable_data_saver", True)
+        setup_data_saver_for_page(page, enabled=enable_saver)
 
         def _track_msft(resp):
             try:
