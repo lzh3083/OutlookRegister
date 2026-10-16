@@ -223,7 +223,11 @@ class BaseBrowserController(ABC):
             self.wait_random_ratio(page, 0.03)
 
             if page.get_by_text("请重试。如果仍然不起作用，请稍后再试。").count() > 0:
-                print("[Error: IP or browser] - 当前IP注册频率过快。检查IP与是否为指纹浏览器并关闭了无头模式。")
+                print(f"[Error: Pwd Rate Limit] - 提交密码后微软拦截：'请重试。如果仍然不起作用，请稍后再试。' | URL: {page.url}", flush=True)
+                try:
+                    page.screenshot(path="/tmp/register_fail_pwd.png")
+                except Exception:
+                    pass
                 return False
 
             year_input = page.locator('[name="BirthYear"]')
@@ -279,19 +283,31 @@ class BaseBrowserController(ABC):
             page.wait_for_timeout(400)
 
             if page.get_by_text('一些异常活动').count() or page.get_by_text('此站点正在维护，暂时无法使用，请稍后重试。').count() > 0:
-                print("[Error: IP or browser] - 当前IP注册频率过快。检查IP与是否为指纹浏览器并关闭了无头模式。")
+                print(f"[Error: Name Rate Limit] - 提交姓名后触发微软风控拦截（'一些异常活动' 或 '站点维护'） | URL: {page.url}", flush=True)
+                try:
+                    page.screenshot(path="/tmp/register_fail_name.png")
+                except Exception:
+                    pass
                 return False
 
             if page.locator('iframe#enforcementFrame').count() > 0:
-                print("[Error: FunCaptcha] - 验证码类型错误，非按压验证码。")
+                print(f"[Error: FunCaptcha] - 验证码类型错误，非按压验证码 | URL: {page.url}", flush=True)
+                try:
+                    page.screenshot(path="/tmp/register_fail_funcaptcha.png")
+                except Exception:
+                    pass
                 return False
 
             captcha_result = self.handle_captcha(page)
             if not captcha_result:
-                raise TimeoutError
+                raise TimeoutError("人机验证挑战未通过")
 
-        except Exception:
-            print("[Error: IP] - 加载超时或因触发机器人检测导致按压次数达到最大仍未通过。")
+        except Exception as flow_err:
+            print(f"[Error: Flow Exception] - 流程异常或按压超时: {flow_err} | URL: {getattr(page, 'url', '')}", flush=True)
+            try:
+                page.screenshot(path="/tmp/register_fail_flow.png")
+            except Exception:
+                pass
             return False
 
         # --- 验证码通过后，绑定辅助邮箱服务 ---

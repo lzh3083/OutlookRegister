@@ -150,6 +150,11 @@ class PatchrightController(BaseBrowserController):
                 if step >= 22 and not getattr(page, "captcha_passed_token", False):
                     break
 
+        try:
+            page.screenshot(path="/tmp/captcha_failed_last.png")
+            print(f"  [Captcha Debug Screenshot]: 保存现场截图至 /tmp/captcha_failed_last.png | URL: {page.url}", flush=True)
+        except Exception:
+            pass
         return False
 
     def get_thread_page(self):
@@ -177,11 +182,19 @@ class PatchrightController(BaseBrowserController):
                     page.risk_tier = "AQAB" if '"continuationToken":"AQAB' in txt else "BgAB"
                 elif "/api/v2/msft" in u and resp.status == 200:
                     page.msft_count += 1
-                elif "risk/verify" in u and resp.status == 200:
-                    txt = resp.text()
-                    if '"continuationToken":' in txt and '"challengeDetails":' not in txt:
-                        page.captcha_passed_token = True
-                        print("  [risk/verify 200 OK] Official continuationToken issued! Waiting for CreateAccount...", flush=True)
+                elif "risk/verify" in u:
+                    try:
+                        txt = resp.text()
+                        if resp.status == 200:
+                            if '"continuationToken":' in txt and '"challengeDetails":' not in txt:
+                                page.captcha_passed_token = True
+                                print("  [risk/verify 200 OK] Official continuationToken issued! Waiting for CreateAccount...", flush=True)
+                            else:
+                                print(f"  [risk/verify 200 Details]: {txt[:240]}", flush=True)
+                        else:
+                            print(f"  [risk/verify HTTP {resp.status}]: {txt[:240]}", flush=True)
+                    except Exception as verify_err:
+                        print(f"  [risk/verify Resp Error]: {verify_err}", flush=True)
                 elif "CreateAccount" in u and resp.status == 200:
                     print("  [CreateAccount 200 OK] Account creation API completed!", flush=True)
             except Exception:

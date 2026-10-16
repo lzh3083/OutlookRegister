@@ -147,10 +147,10 @@ class OutlookGraphController(BaseEmailProvider):
                             subj = _decode_mime_str(msg_obj.get("Subject", ""))
                             body = _extract_plain_body(msg_obj)
                             combined = f"{subj}\n{body}"
-                            if self.masked_email.lower() in combined.lower():
-                                m = re.search(r"(?:安全代码|Security code|代码)[:：\s]*(\d{6})", combined, re.I)
-                                if m:
-                                    return m.group(1)
+                            code_match = re.search(r"(?:安全代码|Security code|代码)[:：\s]*(\d{6})", combined, re.I)
+                            if code_match:
+                                if self.masked_email.lower() in combined.lower() or any(k in subj for k in ("安全代码", "Security code", "Microsoft")):
+                                    return code_match.group(1)
             return None
         finally:
             try:
@@ -196,11 +196,12 @@ for folder in ("INBOX", "Junk"):
         for part in md:
             if isinstance(part, tuple):
                 obj = email.message_from_bytes(part[1])
-                comb = dec(obj.get("Subject", "")) + "\\n" + body_txt(obj)
-                if {self.masked_email.lower()!r} in comb.lower():
-                    mt = re.search(r"(?:安全代码|Security code|代码)[:：\\s]*(\\d{{6}})", comb, re.I)
-                    if mt:
-                        print("CODE:" + mt.group(1))
+                s_txt = dec(obj.get("Subject", ""))
+                comb = s_txt + "\\n" + body_txt(obj)
+                code_match = re.search(r"(?:安全代码|Security code|代码)[:：\\s]*(\\d{{6}})", comb, re.I)
+                if code_match:
+                    if {self.masked_email.lower()!r} in comb.lower() or any(k in s_txt for k in ("安全代码", "Security code", "Microsoft")):
+                        print("CODE:" + code_match.group(1))
                         raise SystemExit(0)
 """
         p = subprocess.run(["ssh", "oracle-tokyo", "python3", "-"], input=script, capture_output=True, text=True, timeout=18)

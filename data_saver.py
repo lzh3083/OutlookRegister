@@ -36,21 +36,13 @@ CHALLENGE_WHITELIST = (
     "credentialaction",
 )
 
-# 必须阻断的高耗流量遥测、录屏与广告域名匹配规则
+# 必须阻断的高耗流量纯广告与第三方埋点（放行微软自身的第一方安全遥测 pipe.aria 与 telemetry，避免风控判定断网拦截）
 BLOCKED_URL_PATTERNS = [
-    "*pipe.aria.microsoft.com*",
-    "*browser.pipe.aria.microsoft.com*",
     "*.clarity.ms*",
-    "*c.bing.com*",
-    "*c.msn.com*",
     "*.adnxs.com*",
     "*.doubleclick.net*",
     "*.google-analytics.com*",
     "*.scorecardresearch.com*",
-    "*telemetry.microsoft.com*",
-    "*events.data.microsoft.com*",
-    "*mobile.pipe.aria.microsoft.com*",
-    "*watson.telemetry.microsoft.com*",
 ]
 
 # Outlook 网页版专属：非必要超重型附属模块关键词（日历/联系人/文件预览等）
@@ -143,10 +135,7 @@ def should_block_request(route) -> tuple[bool, str]:
         if fnmatch.fnmatch(url_lower, pat):
             return True, "telemetry" if "aria" in pat or "clarity" in pat or "telemetry" in pat else "ad"
 
-    # 3. 拦截字体文件 (font) - 对 DOM 识别与按压 0 影响
-    if rtype == "font" or url_lower.endswith((".woff2", ".woff", ".ttf", ".eot", ".otf")):
-        return True, "font"
-
+    # 3. 放行字体文件 (font) - 确保 Canvas 与 WebGL 字体测量指纹真实一致
     # 4. 拦截多媒体文件 (media) - 视频/音频
     if rtype == "media" or url_lower.endswith((".mp4", ".mp3", ".webm", ".ogg", ".wav", ".flac", ".avi")):
         return True, "media"

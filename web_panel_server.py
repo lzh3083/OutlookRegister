@@ -505,7 +505,7 @@ def _run_registration_worker(cfg: dict[str, Any]):
     target_count = int(cfg.get("target_count", 5))
     use_novproxy = bool(cfg.get("use_novproxy", True))
     enable_data_saver = bool(cfg.get("enable_data_saver", True))
-    regions = cfg.get("regions") or ["TW", "JP", "KR", "DE", "CA", "FR", "AU", "SG", "GB", "NL"]
+    regions = cfg.get("regions") or ["SE", "CH", "NO", "FI", "AT", "BE", "DK", "NZ", "IE", "NL", "DE", "CA", "AU", "GB", "FR"]
     email_suffix = str(cfg.get("email_suffix", "@hotmail.com")).strip()
 
     TASK_MGR.add_log(
