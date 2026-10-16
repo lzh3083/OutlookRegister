@@ -119,6 +119,14 @@ class PatchrightController(BaseBrowserController):
                     if getattr(page, "captcha_passed_token", False):
                         completed_seen = True
                         break
+                    # 模拟真人手指按压时的生理性自然微动 (±0.4 ~ 0.8px)
+                    if hold_step % 2 == 0:
+                        jx = tx + random.uniform(-0.8, 0.8)
+                        jy = ty + random.uniform(-0.8, 0.8)
+                        try:
+                            page.mouse.move(jx, jy)
+                        except Exception:
+                            pass
                     try:
                         txt = f.locator("body").inner_text().strip()
                         if held_ms >= 6400 and txt != init_txt and ("已完成" in txt or "请稍候" in txt or "please wait" in txt.lower()):

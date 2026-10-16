@@ -323,22 +323,24 @@ class BaseBrowserController(ABC):
             page.recovery_email = recovery_email
 
             # 新版 interrupt/credentialaction 引导页：必须先点开“添加电子邮件”入口，输入框才会显示。
-            # 关键：这里要判断「可见性」而不是「存在性」。该页输入框常已存在于 DOM 但处于隐藏状态，
-            # 若沿用 count()>0 会直接跳过点击步骤，导致下方 wait_for(state="visible") 必然 20s 超时，
-            # 表现为「账号已注册成功，但辅助邮箱绑定失败」。
             email_selector = '#EmailAddress, input[type="email"], input.fui-Input__input, input[id^="floatingLabelInput"]'
-            for entry_round in range(4):
+            input_ready = False
+            for entry_round in range(20):
                 try:
-                    if page.locator(email_selector).first.is_visible():
+                    if page.locator(email_selector).count() > 0 and page.locator(email_selector).first.is_visible():
+                        input_ready = True
                         break
                 except Exception:
                     pass
 
                 clicked = False
                 for btn in (
+                    page.locator('button[data-testid="primaryButton"]'),
+                    page.locator('[data-testid="primaryButton"]'),
+                    page.locator('button[aria-describedby*="添加电子邮件"]'),
                     page.get_by_text("添加电子邮件", exact=True),
                     page.locator('button:has-text("添加电子邮件")'),
-                    page.locator('[data-testid="primaryButton"]'),
+                    page.locator('button[type="submit"]'),
                 ):
                     try:
                         if btn.count() > 0 and btn.first.is_visible():
@@ -352,15 +354,25 @@ class BaseBrowserController(ABC):
                             break
                     except Exception:
                         continue
-                print(
-                    f"  [Proof Debug] 入口轮次 {entry_round + 1}/4: 已点击={clicked} "
-                    f"输入框数量={page.locator(email_selector).count()}",
-                    flush=True,
-                )
-                page.wait_for_timeout(2000)
+
+                page.wait_for_timeout(1500)
+                try:
+                    if page.locator(email_selector).count() > 0 and page.locator(email_selector).first.is_visible():
+                        input_ready = True
+                        print(f"  [Proof Debug] 入口轮次 {entry_round + 1}/20: 输入框已呈现，进入输入流程", flush=True)
+                        break
+                except Exception:
+                    pass
+
+                if entry_round % 2 == 0 or clicked:
+                    print(
+                        f"  [Proof Debug] 入口轮次 {entry_round + 1}/20: 已点击={clicked} "
+                        f"输入框可见={input_ready} URL={getattr(page, 'url', '')}",
+                        flush=True,
+                    )
 
             email_input = page.locator('#EmailAddress, input[type="email"], input.fui-Input__input, input[id^="floatingLabelInput"], input[type="text"]').first
-            email_input.wait_for(state="visible", timeout=20000)
+            email_input.wait_for(state="visible", timeout=25000)
             self.smooth_type(page, email_input, recovery_email)
 
             self.wait_random_ratio(page, 0.03)
