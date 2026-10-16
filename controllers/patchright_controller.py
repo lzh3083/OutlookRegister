@@ -73,7 +73,8 @@ class PatchrightController(BaseBrowserController):
         )
 
     def handle_captcha(self, page):
-        for attempt in range(0, 3):
+        max_retries = max(int(getattr(self, "max_captcha_retries", 6)), 6)
+        for attempt in range(0, max_retries):
             if getattr(page, "captcha_passed_token", False) or self._is_post_captcha_page(page):
                 for _ in range(60):
                     if self._is_post_captcha_page(page):
@@ -138,7 +139,7 @@ class PatchrightController(BaseBrowserController):
                             break
                 page.wait_for_timeout(random.randint(160, 280))
                 page.mouse.up()
-                print(f"  [Captcha attempt={attempt+1}] mouse released after {held_ms}ms (completed_seen={completed_seen})", flush=True)
+                print(f"  [Captcha attempt={attempt+1}/{max_retries}] mouse released after {held_ms}ms (completed_seen={completed_seen})", flush=True)
             else:
                 loc = f.locator('[aria-label="可访问性挑战"]')
                 self.smooth_click(page, loc)
@@ -154,8 +155,14 @@ class PatchrightController(BaseBrowserController):
                     return False
                 if self._is_post_captcha_page(page):
                     return True
-                # 若松开鼠标满 11 秒仍未收到 continuationToken，立即进入下一次按压挑战（防止挑战会话超时）
-                if step >= 22 and not getattr(page, "captcha_passed_token", False):
+                # 若松开鼠标满 4 秒且按钮已恢复或满 9 秒仍未收到 continuationToken，立即进入下一次按压
+                if step >= 8 and not getattr(page, "captcha_passed_token", False):
+                    try:
+                        if f and f.locator('[aria-label*="按住"]').count() > 0:
+                            break
+                    except Exception:
+                        pass
+                if step >= 18 and not getattr(page, "captcha_passed_token", False):
                     break
 
         try:
