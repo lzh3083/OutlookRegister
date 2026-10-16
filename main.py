@@ -79,7 +79,8 @@ def process_single_flow(controller):
             return False
 
     except Exception as e:
-        print(e)
+        # 面板 stdout 重定向到文件时是块缓冲，异常必须 flush 才不会被吞掉
+        print(f"[process_single_flow 异常] {type(e).__name__}: {e}", flush=True)
         return False
 
     finally:

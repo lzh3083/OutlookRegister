@@ -306,18 +306,41 @@ class BaseBrowserController(ABC):
             recovery_email = mail_provider.get_email()
             page.recovery_email = recovery_email
 
-            # 新版 interrupt/credentialaction 引导页：精准点击蓝色“添加电子邮件”按钮 (exact=True 避免误点上方说明段落)
-            for _ in range(4):
-                if page.locator('#EmailAddress, input[type="email"], input.fui-Input__input, input[id^="floatingLabelInput"]').count() > 0:
-                    break
-                exact_btn = page.get_by_text("添加电子邮件", exact=True)
-                if exact_btn.count() > 0:
-                    self.wait_random_ratio(page, 0.03)
-                    self.smooth_click(page, exact_btn.first)
+            # 新版 interrupt/credentialaction 引导页：必须先点开“添加电子邮件”入口，输入框才会显示。
+            # 关键：这里要判断「可见性」而不是「存在性」。该页输入框常已存在于 DOM 但处于隐藏状态，
+            # 若沿用 count()>0 会直接跳过点击步骤，导致下方 wait_for(state="visible") 必然 20s 超时，
+            # 表现为「账号已注册成功，但辅助邮箱绑定失败」。
+            email_selector = '#EmailAddress, input[type="email"], input.fui-Input__input, input[id^="floatingLabelInput"]'
+            for entry_round in range(4):
+                try:
+                    if page.locator(email_selector).first.is_visible():
+                        break
+                except Exception:
+                    pass
+
+                clicked = False
+                for btn in (
+                    page.get_by_text("添加电子邮件", exact=True),
+                    page.locator('button:has-text("添加电子邮件")'),
+                    page.locator('[data-testid="primaryButton"]'),
+                ):
                     try:
-                        exact_btn.first.evaluate("el => el.click()")
+                        if btn.count() > 0 and btn.first.is_visible():
+                            self.wait_random_ratio(page, 0.03)
+                            self.smooth_click(page, btn.first)
+                            try:
+                                btn.first.evaluate("el => el.click()")
+                            except Exception:
+                                pass
+                            clicked = True
+                            break
                     except Exception:
-                        pass
+                        continue
+                print(
+                    f"  [Proof Debug] 入口轮次 {entry_round + 1}/4: 已点击={clicked} "
+                    f"输入框数量={page.locator(email_selector).count()}",
+                    flush=True,
+                )
                 page.wait_for_timeout(2000)
 
             email_input = page.locator('#EmailAddress, input[type="email"], input.fui-Input__input, input[id^="floatingLabelInput"], input[type="text"]').first

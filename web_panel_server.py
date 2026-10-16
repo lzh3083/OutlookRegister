@@ -583,6 +583,16 @@ def _run_registration_worker(cfg: dict[str, Any]):
                 attempt_ok = process_single_flow(ctrl)
             except Exception as exc:
                 TASK_MGR.add_log("warn", f"⚠️ 尝试 #{TASK_MGR.current_attempt} 发生异常中断: {exc}")
+            finally:
+                # 每个节点都新建独立 controller 实例，必须在此彻底释放 playwright/browser。
+                # process_single_flow 内部只调用 clean_up(page, "done_browser")（仅关 context，
+                # 浏览器复用是 CLI 并发模式的设计），遗留的 playwright 实例会让下一个节点的
+                # sync_playwright().start() 抛出 "Playwright Sync API inside the asyncio loop"
+                # 而瞬间失败，表现为节点以 1~2 秒的速度被批量跳过。
+                try:
+                    ctrl.clean_up(type="all_browser")
+                except Exception as exc:
+                    TASK_MGR.add_log("warn", f"⚠️ 尝试 #{TASK_MGR.current_attempt} 浏览器资源释放异常: {exc}")
 
             if attempt_ok:
                 with TASK_MGR.lock:

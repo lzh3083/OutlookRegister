@@ -49,7 +49,7 @@ if curl -s --max-time 3 "http://127.0.0.1:${PORT}/api/status" > /dev/null 2>&1; 
 fi
 
 echo "[*] 启动面板（DISPLAY=${DISPLAY_VAL}, PANEL_PORT=${PORT}）..."
-setsid env DISPLAY="${DISPLAY_VAL}" PANEL_PORT="${PORT}" nohup python3 web_panel_server.py \
+setsid env DISPLAY="${DISPLAY_VAL}" PANEL_PORT="${PORT}" nohup python3 -u web_panel_server.py \
   > "${LOG_DIR}/panel_stdout.log" 2>&1 < /dev/null &
 sleep 2
 

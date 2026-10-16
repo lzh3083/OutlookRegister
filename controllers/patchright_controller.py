@@ -39,7 +39,8 @@ class PatchrightController(BaseBrowserController):
             return p, b
 
         except Exception as e:
-            print(f"启动浏览器失败: {e}")
+            # 面板场景 stdout 重定向到文件时为块缓冲，必须 flush 才能及时看到失败原因
+            print(f"启动浏览器失败: {type(e).__name__}: {e}", flush=True)
             return False, False
 
     def _find_visible_challenge_frame(self, page, timeout_loops=35):

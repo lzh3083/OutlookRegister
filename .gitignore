@@ -4,3 +4,6 @@ config.local.json
 Results/*.txt
 !Results/recovery_pool.example.txt
 panel_stdout.log
+register_monitor.log
+.register_seen_ids
+watch_register.sh
